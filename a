@@ -1,0 +1,201 @@
+import datetime
+start_time = datetime.datetime.utcnow()
+import discord
+from discord.ext import commands
+from discord import app_commands
+import asyncio
+import json
+import os
+from admin import ADMINS
+
+intents = discord.Intents.default()
+bot = commands.Bot(command_prefix="!", intents=intents)
+
+BLACKLIST_PATH = "blacklist.json"
+
+def load_blacklist():
+    if os.path.exists(BLACKLIST_PATH):
+        with open(BLACKLIST_PATH, "r") as f:
+            return json.load(f)
+    return {}
+
+def save_blacklist(blacklist):
+    with open(BLACKLIST_PATH, "w") as f:
+        json.dump(blacklist, f, indent=2)
+
+blacklist = load_blacklist()
+
+def is_blacklisted(user_id: int) -> bool:
+    return str(user_id) in blacklist and blacklist[str(user_id)]
+
+@bot.tree.command(name="embed-spam", description="spam embed")
+@app_commands.describe(message="the message to embed")
+async def embed_spam(interaction: discord.Interaction, message: str):
+    if is_blacklisted(interaction.user.id):
+        await interaction.response.send_message("you are blacklisted from using this bot.", ephemeral=True)
+        return
+
+    class EmbedSpamView(discord.ui.View):
+        def __init__(self, message: str):
+            super().__init__(timeout=None)
+            self.message = message
+            self.uses = 0
+
+        @discord.ui.button(label="spam embed", style=discord.ButtonStyle.primary)
+        async def spam_embed(self, interaction: discord.Interaction, button: discord.ui.Button):
+            if is_blacklisted(interaction.user.id):
+                await interaction.response.send_message("you are blacklisted from using this bot.", ephemeral=True)
+                return
+
+            self.uses += 1
+            button.label = f"used {self.uses} times"
+            await interaction.response.defer()
+            await interaction.edit_original_response(view=self)
+
+            embed = discord.Embed(description=f"```{self.message}```", color=discord.Color.blurple())
+            for _ in range(5):
+                await interaction.followup.send(embed=embed)
+                await asyncio.sleep(0)
+
+    view = EmbedSpamView(message)
+    await interaction.response.send_message("click the button to spam the embed", ephemeral=True, view=view)
+
+class myview(discord.ui.View):
+    def __init__(self, message: str):
+        super().__init__(timeout=None)
+        self.message = message
+        self.uses = 0
+
+    @discord.ui.button(label="spam message", style=discord.ButtonStyle.primary)
+    async def spam_message(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if is_blacklisted(interaction.user.id):
+            await interaction.response.send_message("womp womp blacklisted nga.", ephemeral=True)
+            return
+
+        self.uses += 1
+        button.label = f"used {self.uses} times"
+        await interaction.response.defer()
+        await interaction.edit_original_response(view=self)
+        await self.start_spam(interaction)
+
+    async def start_spam(self, interaction: discord.Interaction):
+        for _ in range(5):
+            await interaction.followup.send(content=self.message)
+            await asyncio.sleep(0)
+
+@bot.tree.command(name="uptime", description="shows how long the bot has been online")
+async def uptime(interaction: discord.Interaction):
+    now = datetime.datetime.utcnow()
+    delta = now - start_time
+    hours, remainder = divmod(int(delta.total_seconds()), 3600)
+    minutes, seconds = divmod(remainder, 60)
+    msg = f"bot has been online for {hours}h {minutes}m {seconds}s"
+    await interaction.response.send_message(msg, ephemeral=True)
+
+@bot.tree.command(name="buttonspam", description="spam a message using a button")
+@app_commands.describe(message="tthe messages")
+async def buttonspam(interaction: discord.Interaction, message: str):
+    if is_blacklisted(interaction.user.id):
+        await interaction.response.send_message("you are blacklisted from using this bot.", ephemeral=True)
+        return
+
+    view = myview(message)
+    await interaction.response.send_message("click the button to send messages", ephemeral=True, view=view)
+
+@bot.tree.command(name="flood", description="Flood the chat with a message 5 times")
+@app_commands.describe(message="The message to flood with")
+async def flood(interaction: discord.Interaction, message: str):
+    if is_blacklisted(interaction.user.id):
+        await interaction.response.send_message("You are blacklisted from using this bot.", ephemeral=True)
+        return
+
+    await interaction.response.send_message("Flooding...", ephemeral=True)
+    for _ in range(5):
+        await interaction.followup.send(message)
+
+@bot.tree.command(name="say", description="Say a single message")
+@app_commands.describe(message="The message to say")
+async def say(interaction: discord.Interaction, message: str):
+    if is_blacklisted(interaction.user.id):
+        await interaction.response.send_message("You are blacklisted from using this bot.", ephemeral=True)
+        return
+
+    await interaction.response.send_message("OK", ephemeral=True)
+    await interaction.followup.send(message)
+
+@bot.tree.command(name="spamping", description="ping a user multiple times with a message")
+@app_commands.describe(discorduser="The user to ping", times="How many times 1–5", message="tthe message to send")
+async def spam_ping(interaction: discord.Interaction, discorduser: discord.User, times: int, message: str):
+    if is_blacklisted(interaction.user.id):
+        await interaction.response.send_message("You are blacklisted from using this bot.", ephemeral=True)
+        return
+
+    if times < 1 or times > 5:
+        await interaction.response.send_message("Times must be between 1 and 5", ephemeral=True)
+        return
+
+    await interaction.response.send_message("Sending pings...", ephemeral=True)
+    for _ in range(times):
+        content = f"{discorduser.mention} {message}"
+        await interaction.followup.send(content)
+
+@bot.tree.command(name="blacklist-list", description="List all blacklisted users")
+async def blacklist_list(interaction: discord.Interaction):
+    if interaction.user.id not in ADMINS:
+        await interaction.response.send_message("You are not authorized to use this command.", ephemeral=True)
+        return
+
+    if not blacklist:
+        await interaction.response.send_message("No users are currently blacklisted.", ephemeral=True)
+        return
+
+    try:
+        mentions = [f"<@{uid}>" for uid in blacklist.keys()]
+        message = "**Blacklisted Users:**\n" + "\n".join(mentions)
+        await interaction.response.send_message(message, ephemeral=True)
+    except Exception as e:
+        await interaction.response.send_message(f"Error loading blacklist: {e}", ephemeral=True)
+
+@bot.tree.command(name="blacklist-add", description="blacklist a user from using the bot")
+@app_commands.describe(user="User to blacklist")
+async def blacklist_add(interaction: discord.Interaction, user: discord.User):
+    if interaction.user.id not in ADMINS:
+        await interaction.response.send_message("You are not authorized to use this command.", ephemeral=True)
+        return
+
+    blacklist[str(user.id)] = True
+    save_blacklist(blacklist)
+    await interaction.response.send_message(f"{user.mention} has been blacklisted.", ephemeral=True)
+
+@bot.tree.command(name="blacklist-remove", description="remove a user from the blacklist")
+@app_commands.describe(user="User to unblacklist")
+async def blacklist_remove(interaction: discord.Interaction, user: discord.User):
+    if interaction.user.id not in ADMINS:
+        await interaction.response.send_message("You are not authorized to use this command.", ephemeral=True)
+        return
+
+    if str(user.id) in blacklist:
+        del blacklist[str(user.id)]
+        save_blacklist(blacklist)
+        await interaction.response.send_message(f"{user.mention} has been removed from the blacklist.", ephemeral=True)
+    else:
+        await interaction.response.send_message(f"{user.mention} is not blacklisted.", ephemeral=True)
+
+@bot.tree.command(name="ping", description="shows the bot latency")
+async def ping(interaction: discord.Interaction):
+    latency = round(bot.latency * 1000)
+    await interaction.response.send_message(f"pong! {latency}ms", ephemeral=True)
+
+@bot.event
+async def on_ready():
+    print(f"Logged in as {bot.user} (id: {bot.user.id})")
+    try:
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} command(s)")
+    except Exception as e:
+        print(f"Failed to sync commands: {e}")
+    await bot.change_presence(
+        status=discord.Status.dnd,
+        activity=discord.Activity(type=discord.ActivityType.listening, name="Dance With The Devil by Immortal Technique")
+    )
+
