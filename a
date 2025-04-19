@@ -181,19 +181,19 @@ async def blacklist_remove(interaction: discord.Interaction, user: discord.User)
     else:
         await interaction.response.send_message(f"{user.mention} is not blacklisted.", ephemeral=True)
 
-@bot.tree.command(name="ping", description="shows the bot latency")
+@bot.tree.command(name="ping", description="shows the bot latency n")
 async def ping(interaction: discord.Interaction):
     latency = round(bot.latency * 1000)
     await interaction.response.send_message(f"pong! {latency}ms", ephemeral=True)
 
 @bot.event
 async def on_ready():
-    print(f"Logged in as {bot.user} (id: {bot.user.id})")
+    print(f"log {bot.user} (id: {bot.user.id})")
     try:
         synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} command(s)")
+        print(f"loeded {len(synced)} command(s)")
     except Exception as e:
-        print(f"Failed to sync commands: {e}")
+        print(f"failed to sync commands: {e}")
     await bot.change_presence(
         status=discord.Status.dnd,
         activity=discord.Activity(type=discord.ActivityType.listening, name="Dance With The Devil by Immortal Technique")
